@@ -1,3 +1,4 @@
+
 🧭 Enterprise AKS + DevOps Platform (Full CI/CD + Monitoring)
 🚀 Overview
 
@@ -6,6 +7,8 @@ This project demonstrates a modular, production-grade Azure Kubernetes Service (
 It forms the foundation for a scalable, enterprise-ready DevOps Platform — featuring automated provisioning, monitoring, and CI/CD readiness.
 
 🏗️ Architecture Diagram
+```
+
                  ┌────────────────────────────┐
                  │        GitHub Repo          │
                  │ (Infra + App + CI/CD YAMLs) │
@@ -27,7 +30,9 @@ It forms the foundation for a scalable, enterprise-ready DevOps Platform — fea
           │   AKS + ACR + Monitoring    │
           └────────────────────────────┘
 
+```
 📁 Repository Structure
+
 aks-devops-platform/
 ├── app/                     # Sample Node.js app (containerized)
 │   ├── package.json
