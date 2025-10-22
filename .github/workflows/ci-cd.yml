@@ -5,10 +5,14 @@ on:
     branches: ["main", "dev"]
   pull_request:
     branches: ["main"]
-  workflow_dispatch:   # 👈 allows manual trigger
+  workflow_dispatch:
+
+permissions:
+  id-token: write     # ✅ Required for OIDC authentication
+  contents: read      # ✅ Needed for repo checkout
 
 jobs:
-  build-and-deploy:
+  infra-build-and-deploy:
     runs-on: ubuntu-latest
 
     env:
@@ -16,13 +20,14 @@ jobs:
       CHART_PATH: charts/sample-app
       RELEASE_NAME: sample-app
       K8S_NAMESPACE: default
+      ENV_PATH: envs/dev        # path to Terraform environment
 
     steps:
-      # 1️⃣ Checkout repository
-      - name: 📦 Checkout
+      # 1️⃣ Checkout the repo
+      - name: 📦 Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Login to Azure using OIDC (no secrets.json!)
+      # 2️⃣ Login to Azure using OIDC (no secrets.json)
       - name: 🔐 Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -30,20 +35,46 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # 3️⃣ Login to ACR
-      - name: 🐳 Azure Container Registry Login
+      # 3️⃣ Setup Terraform
+      - name: 🧱 Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.5
+
+      # 4️⃣ Terraform Init
+      - name: ⚙️ Terraform Init
+        working-directory: ${{ env.ENV_PATH }}
+        run: terraform init -input=false
+
+      # 5️⃣ Terraform Validate
+      - name: 🧩 Terraform Validate
+        working-directory: ${{ env.ENV_PATH }}
+        run: terraform validate
+
+      # 6️⃣ Terraform Plan
+      - name: 🪄 Terraform Plan
+        working-directory: ${{ env.ENV_PATH }}
+        run: terraform plan -var-file=dev.tfvars -out=tfplan
+
+      # 7️⃣ Terraform Apply
+      - name: 🚀 Terraform Apply
+        working-directory: ${{ env.ENV_PATH }}
+        run: terraform apply -auto-approve tfplan
+
+      # 8️⃣ Login to ACR (via Azure CLI)
+      - name: 🐳 Login to Azure Container Registry
         run: |
           az acr login --name ${{ secrets.ACR_NAME }}
 
-      # 4️⃣ Build and Push Docker Image
-      - name: 🚢 Build and Push Image to ACR
+      # 9️⃣ Build and Push Docker Image
+      - name: 🏗️ Build and Push Docker Image to ACR
         run: |
           IMAGE_TAG=${{ github.sha }}
           ACR_LOGIN_SERVER=$(az acr show --name ${{ secrets.ACR_NAME }} --query loginServer -o tsv)
           docker build -t $ACR_LOGIN_SERVER/${{ env.IMAGE_NAME }}:$IMAGE_TAG .
           docker push $ACR_LOGIN_SERVER/${{ env.IMAGE_NAME }}:$IMAGE_TAG
 
-      # 5️⃣ Set AKS Context
+      # 🔟 Get AKS Credentials
       - name: ☸️ Get AKS Credentials
         run: |
           az aks get-credentials \
@@ -51,7 +82,7 @@ jobs:
             --name ${{ secrets.AKS_CLUSTER_NAME }} \
             --overwrite-existing
 
-      # 6️⃣ Deploy or Upgrade Helm Chart
+      # 11️⃣ Deploy or Upgrade Helm Chart
       - name: ⚙️ Helm Upgrade or Install
         run: |
           ACR_LOGIN_SERVER=$(az acr show --name ${{ secrets.ACR_NAME }} --query loginServer -o tsv)
