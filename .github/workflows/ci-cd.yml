@@ -1,14 +1,16 @@
-name: CI/CD
+name: 🚀 AKS DevOps Platform CI/CD
 
 on:
   push:
     branches: ["main", "dev"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:   # 👈 allows manual trigger
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     env:
       IMAGE_NAME: sample-app
       CHART_PATH: charts/sample-app
@@ -16,33 +18,47 @@ jobs:
       K8S_NAMESPACE: default
 
     steps:
-      - name: Checkout
+      # 1️⃣ Checkout repository
+      - name: 📦 Checkout
         uses: actions/checkout@v4
 
-      - name: Azure Login
-        uses: azure/login@v1
+      # 2️⃣ Login to Azure using OIDC (no secrets.json!)
+      - name: 🔐 Azure Login (OIDC)
+        uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Login to ACR
-        uses: azure/docker-login@v1
-        with:
-          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
-      - name: Build and push image
+      # 3️⃣ Login to ACR
+      - name: 🐳 Azure Container Registry Login
         run: |
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          az acr login --name ${{ secrets.ACR_NAME }}
 
-      - name: Get AKS Credentials
-        uses: azure/aks-set-context@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
-          resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
-
-      - name: Helm upgrade/install
+      # 4️⃣ Build and Push Docker Image
+      - name: 🚢 Build and Push Image to ACR
         run: |
-          helm upgrade --install $RELEASE_NAME $CHART_PATH             --namespace $K8S_NAMESPACE             --set image.repository=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}             --set image.tag=${{ github.sha }}             --wait
+          IMAGE_TAG=${{ github.sha }}
+          ACR_LOGIN_SERVER=$(az acr show --name ${{ secrets.ACR_NAME }} --query loginServer -o tsv)
+          docker build -t $ACR_LOGIN_SERVER/${{ env.IMAGE_NAME }}:$IMAGE_TAG .
+          docker push $ACR_LOGIN_SERVER/${{ env.IMAGE_NAME }}:$IMAGE_TAG
+
+      # 5️⃣ Set AKS Context
+      - name: ☸️ Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} \
+            --name ${{ secrets.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      # 6️⃣ Deploy or Upgrade Helm Chart
+      - name: ⚙️ Helm Upgrade or Install
+        run: |
+          ACR_LOGIN_SERVER=$(az acr show --name ${{ secrets.ACR_NAME }} --query loginServer -o tsv)
+          helm upgrade --install $RELEASE_NAME $CHART_PATH \
+            --namespace $K8S_NAMESPACE \
+            --create-namespace \
+            --set image.repository=$ACR_LOGIN_SERVER/${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ github.sha }} \
+            --wait
+
