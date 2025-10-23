@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------
-      # Validate Required Secrets (Static, Safe)
+      # Validate Required Secrets
       # -----------------------------
       - name: 🧠 Validate Required Secrets
         run: |
@@ -68,54 +68,31 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # -----------------------------
-      # Validate & Ensure Role Assignments (Self-Healing)
+      # Ensure AKS Role Assignment Exists
       # -----------------------------
-      - name: 🔑 Validate Azure Role Assignments
+      - name: 🔑 Ensure AKS Cluster User Role Assigned
         run: |
-          echo "🔍 Validating AKS and Storage permissions for GitHub OIDC App..."
           SP_ID=${{ secrets.AZURE_CLIENT_ID }}
-          SUBSCRIPTION_ID=${{ secrets.AZURE_SUBSCRIPTION_ID }}
           RG_NAME=${{ secrets.AKS_RESOURCE_GROUP }}
           AKS_NAME=${{ secrets.AKS_CLUSTER_NAME }}
-
-          # Get AKS resource ID
+          
           AKS_ID=$(az aks show --name "$AKS_NAME" --resource-group "$RG_NAME" --query id -o tsv)
           echo "🧩 AKS Resource ID: $AKS_ID"
-
-          # ✅ Check AKS access
+          
           ROLE_EXISTS=$(az role assignment list \
             --assignee "$SP_ID" \
             --scope "$AKS_ID" \
             --query "[?roleDefinitionName=='Azure Kubernetes Service Cluster User Role'] | length(@)" -o tsv)
-
+          
           if [ "$ROLE_EXISTS" -eq 0 ]; then
-            echo "⚠️ Missing AKS Cluster User Role — assigning..."
+            echo "⚠️ Missing role — assigning Azure Kubernetes Service Cluster User Role..."
             az role assignment create \
               --assignee "$SP_ID" \
               --role "Azure Kubernetes Service Cluster User Role" \
               --scope "$AKS_ID"
-            echo "✅ AKS role assignment added."
+            echo "✅ Role assigned successfully."
           else
-            echo "✅ AKS role already assigned."
-          fi
-
-          # ✅ Check Terraform backend (Storage Blob Data Contributor)
-          echo "🔍 Checking Terraform state storage permissions..."
-          STORAGE_SCOPE=$(az storage account list --resource-group rg-landingzone-tfstate --query "[0].id" -o tsv)
-          ROLE_EXISTS=$(az role assignment list \
-            --assignee "$SP_ID" \
-            --scope "$STORAGE_SCOPE" \
-            --query "[?roleDefinitionName=='Storage Blob Data Contributor'] | length(@)" -o tsv)
-
-          if [ "$ROLE_EXISTS" -eq 0 ]; then
-            echo "⚠️ Missing Storage Blob Data Contributor — assigning..."
-            az role assignment create \
-              --assignee "$SP_ID" \
-              --role "Storage Blob Data Contributor" \
-              --scope "$STORAGE_SCOPE"
-            echo "✅ Storage role assignment added."
-          else
-            echo "✅ Storage access already assigned."
+            echo "✅ Role already assigned."
           fi
 
       # -----------------------------
