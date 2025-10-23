@@ -12,13 +12,10 @@ terraform {
   required_version = ">=1.2.0"
 }
 
-# Provider for Azure (supports both local CLI and OIDC via GitHub Actions)
 provider "azurerm" {
   features {}
 
-  # This allows Terraform to authenticate using GitHub OIDC
-  # when running inside GitHub Actions
-  use_oidc                   = true
-  skip_provider_registration = false
+  # Enable GitHub OIDC authentication
+  use_oidc = true
 }
 
