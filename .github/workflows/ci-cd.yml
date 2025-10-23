@@ -111,14 +111,18 @@ jobs:
       # -----------------------------
       # Install kubelogin for AKS auth
       # -----------------------------
-      - name: 🧩 Install kubelogin
+      - name: 🎯 Get AKS Credentials
+        env:
+          AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
+          AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
         run: |
-          echo "Installing kubelogin..."
-          curl -L -o kubelogin.zip https://github.com/Azure/kubelogin/releases/latest/download/kubelogin-linux-amd64.zip
-          unzip kubelogin.zip -d kubelogin
-          sudo mv kubelogin/bin/linux_amd64/kubelogin /usr/local/bin/kubelogin
-          sudo chmod +x /usr/local/bin/kubelogin
-          kubelogin --version
+          echo "🔐 Connecting to AKS..."
+          echo "Using cluster: $AKS_CLUSTER_NAME"
+          echo "Using resource group: $AKS_RESOURCE_GROUP"
+          az aks get-credentials \
+            --name "$AKS_CLUSTER_NAME" \
+            --resource-group "$AKS_RESOURCE_GROUP" \
+            --overwrite-existing
           
       # -----------------------------  
       # Connect to AKS
