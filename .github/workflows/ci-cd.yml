@@ -9,18 +9,20 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    env:
-      IMAGE_NAME: sample-app
-      CHART_PATH: charts/sample-app
-      RELEASE_NAME: sample-app
-      K8S_NAMESPACE: default
 
     permissions:
       id-token: write
       contents: read
 
+    env:
+      IMAGE_NAME: sample-app
+      CHART_PATH: charts/sample-app
+      RELEASE_NAME: sample-app
+      K8S_NAMESPACE: default
+      ENV_PATH: envs/dev
+
     steps:
-      - name: Checkout
+      - name: 🧾 Checkout
         uses: actions/checkout@v4
 
       - name: 🔐 Azure Login (OIDC)
@@ -30,33 +32,36 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: 🧩 Setup Terraform
+      - name: 🧱 Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.5
 
       - name: ⚙️ Terraform Init
+        working-directory: ${{ env.ENV_PATH }}
         env:
+          ARM_USE_OIDC: true
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: true
-        run: terraform -chdir=envs/dev init -input=false
+        run: terraform init -input=false
 
       - name: 🧮 Terraform Plan
+        working-directory: ${{ env.ENV_PATH }}
         env:
+          ARM_USE_OIDC: true
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: true
-        run: terraform -chdir=envs/dev plan -var-file=dev.tfvars
+        run: terraform plan -var-file=dev.tfvars
 
       - name: 🚀 Terraform Apply
         if: github.ref == 'refs/heads/main'
+        working-directory: ${{ env.ENV_PATH }}
         env:
+          ARM_USE_OIDC: true
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: true
-        run: terraform -chdir=envs/dev apply -var-file=dev.tfvars -auto-approve
+        run: terraform apply -var-file=dev.tfvars -auto-approve
 
