@@ -7,9 +7,9 @@ This project demonstrates a modular, production-grade Azure Kubernetes Service (
 It forms the foundation for a scalable, enterprise-ready DevOps Platform — featuring automated provisioning, monitoring, and CI/CD readiness.
 
 🏗️ Architecture Diagram
-```
+```  
 
-                 ┌────────────────────────────┐
+                 ┌──────────── ────────────────┐
                  │        GitHub Repo          │
                  │ (Infra + App + CI/CD YAMLs) │
                  └────────────┬────────────────┘
