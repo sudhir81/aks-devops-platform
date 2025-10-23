@@ -1,4 +1,4 @@
-name: 🚀 AKS DevOps CI/CD
+name: 🚀 AKS DevOps CI/CD (OIDC Native)
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       K8S_NAMESPACE: default
       ENV_PATH: envs/dev
 
-      # 🔐 Terraform + OIDC Auth
+      # 🔐 Terraform + OIDC environment
       ARM_USE_OIDC: true
       ARM_SKIP_CLI_CREDENTIAL: true
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -29,10 +29,10 @@ jobs:
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
     steps:
-      - name: 🧾 Checkout repository
+      - name: 🧾 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🔐 Azure Login (OIDC)
+      - name: 🔐 Azure Login via OIDC
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -44,36 +44,30 @@ jobs:
         with:
           terraform_version: 1.8.5
 
-      - name: 🧪 Verify Terraform environment
-        run: |
-          echo "ARM_CLIENT_ID=$ARM_CLIENT_ID"
-          echo "ARM_TENANT_ID=$ARM_TENANT_ID"
-          echo "ARM_SUBSCRIPTION_ID=$ARM_SUBSCRIPTION_ID"
-          echo "ARM_USE_OIDC=$ARM_USE_OIDC"
-          echo "ARM_SKIP_CLI_CREDENTIAL=$ARM_SKIP_CLI_CREDENTIAL"
-
       - name: ⚙️ Terraform Init
         run: terraform -chdir=${{ env.ENV_PATH }} init -input=false
 
       - name: 🪄 Terraform Plan
         run: terraform -chdir=${{ env.ENV_PATH }} plan -var-file=dev.tfvars
 
-      # Optional Apply — comment out in PR mode
       - name: 🚀 Terraform Apply
         if: github.ref == 'refs/heads/main'
         run: terraform -chdir=${{ env.ENV_PATH }} apply -var-file=dev.tfvars -auto-approve
 
-      - name: 🐳 Login to ACR
-        uses: azure/docker-login@v1
-        with:
-          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+      - name: 🔑 Login to ACR using OIDC
+        run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
 
       - name: 🏗️ Build and Push Docker Image
         run: |
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          IMAGE_TAG=${{ github.ref_name == 'main' && 'latest' || github.sha }}
+          IMAGE_URI=${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+          
+          echo "Building image: $IMAGE_URI"
+          docker build -t $IMAGE_URI .
+          docker push $IMAGE_URI
+          
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
 
       - name: ☸️ Get AKS Credentials
         uses: azure/aks-set-context@v2
@@ -81,10 +75,11 @@ jobs:
           cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
           resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
 
-      - name: ⛵ Helm Upgrade/Install
+      - name: ⛵ Deploy via Helm
         run: |
           helm upgrade --install $RELEASE_NAME $CHART_PATH \
             --namespace $K8S_NAMESPACE \
-            --set image.repository=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }} \
-            --set image.tag=${{ github.sha }} \
+            --set image.repository=${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }} \
+            --set image.tag=$(echo ${{ github.ref_name == 'main' && 'latest' || github.sha }}) \
             --wait
+
