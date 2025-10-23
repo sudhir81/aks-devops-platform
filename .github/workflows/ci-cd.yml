@@ -1,19 +1,18 @@
-name: 🚀 AKS DevOps CI/CD (OIDC Native)
+name: 🚀 AKS DevOps Platform CI/CD
 
 on:
   push:
-    branches: ["main", "dev"]
+    branches: ["main"]
   pull_request:
     branches: ["main"]
 
 permissions:
-  id-token: write
+  id-token: write   # ✅ Required for OIDC authentication
   contents: read
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
     env:
       IMAGE_NAME: sample-app
       CHART_PATH: charts/sample-app
@@ -21,65 +20,91 @@ jobs:
       K8S_NAMESPACE: default
       ENV_PATH: envs/dev
 
-      # 🔐 Terraform + OIDC environment
-      ARM_USE_OIDC: true
-      ARM_SKIP_CLI_CREDENTIAL: true
-      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
     steps:
-      - name: 🧾 Checkout Repository
+      # -----------------------------
+      # Checkout Code
+      # -----------------------------
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🔐 Azure Login via OIDC
+      # -----------------------------
+      # Azure Login via OIDC
+      # -----------------------------
+      - name: 🔐 Azure Login (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # -----------------------------
+      # Setup Terraform
+      # -----------------------------
       - name: 🧱 Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.5
 
+      # -----------------------------
+      # Terraform Init / Plan
+      # -----------------------------
       - name: ⚙️ Terraform Init
         run: terraform -chdir=${{ env.ENV_PATH }} init -input=false
+        env:
+          ARM_USE_OIDC: true
+          ARM_SKIP_CLI_CREDENTIAL: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: 🪄 Terraform Plan
-        run: terraform -chdir=${{ env.ENV_PATH }} plan -var-file=dev.tfvars
+      - name: 🧮 Terraform Plan
+        run: terraform -chdir=${{ env.ENV_PATH }} plan -input=false -out=tfplan
+        env:
+          ARM_USE_OIDC: true
+          ARM_SKIP_CLI_CREDENTIAL: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: 🚀 Terraform Apply
-        if: github.ref == 'refs/heads/main'
-        run: terraform -chdir=${{ env.ENV_PATH }} apply -var-file=dev.tfvars -auto-approve
-
-      - name: 🔑 Login to ACR using OIDC
-        run: |
-          az acr login --name ${{ secrets.ACR_NAME }}
+      # -----------------------------
+      # Build & Push Docker Image to ACR
+      # -----------------------------
+      - name: 🐳 Azure Container Registry Login
+        run: az acr login --name ${{ secrets.ACR_NAME }}
 
       - name: 🏗️ Build and Push Docker Image
         run: |
-          IMAGE_TAG=${{ github.ref_name == 'main' && 'latest' || github.sha }}
-          IMAGE_URI=${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
-          
-          echo "Building image: $IMAGE_URI"
-          docker build -t $IMAGE_URI .
-          docker push $IMAGE_URI
-          
-          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      - name: ☸️ Get AKS Credentials
-        uses: azure/aks-set-context@v2
-        with:
-          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
-          resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
+      # -----------------------------
+      # Install kubelogin for AKS auth
+      # -----------------------------
+      - name: 🧩 Install kubelogin
+        run: |
+          curl -LO https://github.com/Azure/kubelogin/releases/latest/download/kubelogin-linux-amd64.zip
+          unzip kubelogin-linux-amd64.zip -d kubelogin
+          sudo mv kubelogin/bin/linux_amd64/kubelogin /usr/local/bin/kubelogin
+          kubelogin --version
 
+      # -----------------------------
+      # Connect to AKS
+      # -----------------------------
+      - name: 🎯 Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --name ${{ secrets.AKS_CLUSTER_NAME }} \
+            --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} \
+            --overwrite-existing
+
+      # -----------------------------
+      # Helm Deploy
+      # -----------------------------
       - name: ⛵ Deploy via Helm
         run: |
           helm upgrade --install $RELEASE_NAME $CHART_PATH \
             --namespace $K8S_NAMESPACE \
             --set image.repository=${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }} \
-            --set image.tag=$(echo ${{ github.ref_name == 'main' && 'latest' || github.sha }}) \
+            --set image.tag=latest \
             --wait
 
