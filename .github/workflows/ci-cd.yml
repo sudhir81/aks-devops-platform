@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 
 permissions:
-  id-token: write   # Required for Azure OIDC login
+  id-token: write
   contents: read
 
 jobs:
@@ -33,28 +33,13 @@ jobs:
       - name: 🧠 Validate Required Secrets
         run: |
           echo "🔍 Validating required secrets..."
-          MISSING=false
-          check_secret() {
-            if [ -z "$1" ]; then
-              echo "❌ Missing secret: $2"
-              MISSING=true
-            else
-              echo "✅ $2 found"
+          for s in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID ACR_NAME AKS_CLUSTER_NAME AKS_RESOURCE_GROUP; do
+            if [ -z "${{ secrets[$s] }}" ]; then
+              echo "❌ Missing secret: $s"
+              exit 1
             fi
-          }
-
-          check_secret "${{ secrets.AZURE_CLIENT_ID }}" "AZURE_CLIENT_ID"
-          check_secret "${{ secrets.AZURE_TENANT_ID }}" "AZURE_TENANT_ID"
-          check_secret "${{ secrets.AZURE_SUBSCRIPTION_ID }}" "AZURE_SUBSCRIPTION_ID"
-          check_secret "${{ secrets.ACR_NAME }}" "ACR_NAME"
-          check_secret "${{ secrets.AKS_CLUSTER_NAME }}" "AKS_CLUSTER_NAME"
-          check_secret "${{ secrets.AKS_RESOURCE_GROUP }}" "AKS_RESOURCE_GROUP"
-
-          if [ "$MISSING" = true ]; then
-            echo "❌ One or more required secrets are missing. Exiting..."
-            exit 1
-          fi
-          echo "✅ All required secrets are present."
+            echo "✅ $s found"
+          done
 
       # -----------------------------
       # Azure Login (OIDC)
@@ -67,7 +52,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # -----------------------------
-      # Ensure Role Assignment
+      # Ensure AKS Role Assignment
       # -----------------------------
       - name: 🔑 Ensure AKS Cluster Admin Role
         run: |
@@ -84,7 +69,7 @@ jobs:
             --query "[?roleDefinitionName=='Azure Kubernetes Service RBAC Cluster Admin'] | length(@)" -o tsv)
 
           if [ "$ROLE_EXISTS" -eq 0 ]; then
-            echo "⚠️ Missing role — assigning Cluster Admin..."
+            echo "⚠️ Assigning AKS RBAC Cluster Admin..."
             az role assignment create \
               --assignee "$SP_ID" \
               --role "Azure Kubernetes Service RBAC Cluster Admin" \
@@ -102,7 +87,7 @@ jobs:
           terraform_version: 1.8.5
 
       # -----------------------------
-      # Terraform Init (with retry)
+      # Terraform Init
       # -----------------------------
       - name: ⚙️ Terraform Init
         run: |
@@ -127,7 +112,7 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # -----------------------------
-      # Terraform Plan (with retry)
+      # Terraform Plan
       # -----------------------------
       - name: 🧮 Terraform Plan
         run: |
@@ -152,7 +137,7 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # -----------------------------
-      # Build & Push Docker Image
+      # Docker Build & Push
       # -----------------------------
       - name: 🐳 Login to ACR
         run: az acr login --name ${{ secrets.ACR_NAME }}
@@ -167,7 +152,7 @@ jobs:
       # -----------------------------
       # Connect to AKS (Fixed REST Fallback)
       # -----------------------------
-      - name: 🎯 Get AKS Credentials (REST fallback)
+      - name: 🎯 Get AKS Credentials (Fixed)
         env:
           AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
           AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
@@ -178,18 +163,15 @@ jobs:
 
           for attempt in 1 2 3; do
             echo "⚙️ Attempt $attempt of 3..."
-            if az aks get-credentials \
-              --name "$AKS_CLUSTER_NAME" \
-              --resource-group "$AKS_RESOURCE_GROUP" \
-              --overwrite-existing \
-              --admin; then
+            if az aks get-credentials --name "$AKS_CLUSTER_NAME" --resource-group "$AKS_RESOURCE_GROUP" --overwrite-existing --admin; then
               echo "✅ Connected to AKS."
               break
             else
-              echo "❌ Failed to connect (attempt $attempt). Using REST fallback..."
+              echo "❌ Failed to connect (attempt $attempt). Trying REST fallback..."
               az rest --method get \
-                --url "https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ secrets.AKS_RESOURCE_GROUP }}/providers/Microsoft.ContainerService/managedClusters/${{ secrets.AKS_CLUSTER_NAME }}?api-version=2025-04-01" \
-                --output none || true
+                --uri "https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ secrets.AKS_RESOURCE_GROUP }}/providers/Microsoft.ContainerService/managedClusters/${{ secrets.AKS_CLUSTER_NAME }}?api-version=2025-04-01" \
+                --headers "Content-Type=application/json" \
+                --output none || echo "⚠️ REST fallback failed, retrying..."
               if [ "$attempt" -lt 3 ]; then
                 echo "⏳ Waiting 15 seconds..."
                 sleep 15
@@ -226,19 +208,12 @@ jobs:
       # -----------------------------
       # Post Deployment Check
       # -----------------------------
-      - name: ✅ Deployment Summary
+      - name: ✅ Verify Deployment Health
         run: |
-          echo "🔎 Checking service status..."
+          echo "🔎 Checking rollout status..."
+          kubectl rollout status deployment/$RELEASE_NAME -n $K8S_NAMESPACE --timeout=120s || true
+          echo "🔹 Listing pods:"
+          kubectl get pods -n $K8S_NAMESPACE -o wide
+          echo "🔹 Listing services:"
           kubectl get svc -n $K8S_NAMESPACE
-          echo "⏳ Waiting for external IP..."
-          for i in {1..20}; do
-            IP=$(kubectl get svc -n $K8S_NAMESPACE | grep $RELEASE_NAME | awk '{print $4}')
-            if [[ "$IP" != "<pending>" && "$IP" != "" ]]; then
-              echo "🌐 App available at: http://$IP"
-              exit 0
-            fi
-            echo "Still waiting for external IP... ($i/20)"
-            sleep 15
-          done
-          echo "⚠️ External IP still pending. Check AKS LoadBalancer."
 
