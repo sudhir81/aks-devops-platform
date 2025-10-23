@@ -1,38 +1,34 @@
 
-🧭 Enterprise AKS + DevOps Platform (Full CI/CD + Monitoring)
-🚀 Overview
+# 🧭 AKS DevOps Platform — Terraform Infrastructure
 
-This project demonstrates a modular, production-grade Azure Kubernetes Service (AKS) deployment using Terraform, integrated with Azure DevOps practices such as containerization, Helm packaging, and infrastructure automation.
+✅ **Stable configuration verified:** 2025-10-24  
+This project provisions a full **Enterprise AKS + DevOps Platform** on Azure using Terraform.
 
-It forms the foundation for a scalable, enterprise-ready DevOps Platform — featuring automated provisioning, monitoring, and CI/CD readiness.
+## 🚀 Components
 
-🏗️ Architecture Diagram
-```  
+| Module | Description |
+|---------|--------------|
+| network | Creates VNet and AKS subnet |
+| monitoring | Deploys Log Analytics Workspace |
+| aks | Creates AKS cluster with AAD RBAC and monitoring enabled |
 
-                 ┌──────────── ────────────────┐
-                 │        GitHub Repo          │
-                 │ (Infra + App + CI/CD YAMLs) │
-                 └────────────┬────────────────┘
-                              │
-        ┌─────────────────────┴───────────────────────┐
-        │                 Terraform                   │
-        │  ─────────────────────────────────────────  │
-        │  • Resource Group                           │
-        │  • Virtual Network & Subnet                 │
-        │  • AKS Cluster (System Node Pool)           │
-        │  • Log Analytics Workspace                  │
-        │  • Azure Container Registry (ACR)           │
-        └─────────────────────┬───────────────────────┘
-                              │
-                              ▼
-          ┌────────────────────────────┐
-          │     Azure Cloud Platform    │
-          │   AKS + ACR + Monitoring    │
-          └────────────────────────────┘
+## ⚙️ Terraform Versions
+- Terraform: `v1.9.x`
+- Provider: `azurerm >= 4.49.0`
+- Backend: Local or Azure Storage
+
+## 🧠 Usage
+
+```bash
+cd envs/dev
+terraform init -upgrade
+terraform validate
+terraform plan -var-file=dev.tfvars
+terraform apply -var-file=dev.tfvars -auto-approve
 
 ```
 📁 Repository Structure
-
+```
 aks-devops-platform/
 ├── app/                     # Sample Node.js app (containerized)
 │   ├── package.json
@@ -61,9 +57,10 @@ aks-devops-platform/
 ├── Dockerfile                # Containerize the app
 ├── .gitignore                # Ignore Terraform state and local artifacts
 └── README.md                 # This file
-
+```
 ⚙️ Deployment Steps
-1️⃣ Prerequisites
+1️⃣
+ Prerequisites
 
 Ensure the following tools are installed:
 
@@ -102,14 +99,15 @@ Log Analytics Workspace
 
 Azure Container Registry (ACR)
 
+```
 🧱 Modules Overview
 Module	Description	Key Resources
-network	Creates VNet and Subnet for AKS	azurerm_virtual_network, azurerm_subnet
-monitoring	Creates Log Analytics Workspace for monitoring	azurerm_log_analytics_workspace
-aks	Provisions AKS cluster with RBAC, monitoring, and AAD integration	azurerm_kubernetes_cluster
-keyvault	(Planned) For secret management integration	azurerm_key_vault
+network			Creates VNet and Subnet for AKS	azurerm_virtual_network, azurerm_subnet
+monitoring		Creates Log Analytics Workspace for monitoring	azurerm_log_analytics_workspace
+aks			Provisions AKS cluster with RBAC, monitoring, and AAD integration	azurerm_kubernetes_cluster
+keyvault		(Planned) For secret management integration	azurerm_key_vault
 🐳 App Containerization (Optional)
-
+```
 To build and push the app image to ACR:
 
 az acr login --name <acr_name>
@@ -150,14 +148,14 @@ Access via:
 Azure Portal → Monitor → Logs → Container Insights
 
 🏁 Project Highlights
-
+```
 ✅ Modular Terraform design
 ✅ Remote backend with state locking
 ✅ Secure, scalable AKS setup
 ✅ App containerization + Helm
 ✅ CI/CD ready architecture
 ✅ Enterprise-grade monitoring
-
+```
 👤 Author
 
 Sudhir D.
