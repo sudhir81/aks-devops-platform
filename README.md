@@ -117,36 +117,27 @@ docker push <acr_name>.azurecr.io/sample-app:v1
 ⛵ Helm Deployment
 
 Once the AKS context is configured:
-
+```
 az aks get-credentials --resource-group dev-rg --name dev-aks
 helm install sample-app ./charts/sample-app --set image.repository=<acr_name>.azurecr.io/sample-app,image.tag=v1
-
+```
 🧩 Next Phase (CI/CD Integration)
-
+```
 Future enhancement using GitHub Actions or Azure DevOps Pipelines:
-
 Terraform Plan & Apply (Infra-as-Code workflow)
-
 Docker Build & Push to ACR
-
 Helm Deploy to AKS
-
 Post-deployment Monitoring with Azure Monitor
-
+```
 📊 Monitoring
-
+```
 The Log Analytics Workspace integrates directly with AKS to enable:
-
 Container insights (CPU, memory, node utilization)
-
 Cluster logs
-
 Application metrics
-
 Access via:
-
 Azure Portal → Monitor → Logs → Container Insights
-
+```
 🏁 Project Highlights
 ```
 ✅ Modular Terraform design
