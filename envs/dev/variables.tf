@@ -1,40 +1,105 @@
+###########################################################
+# 🌍 Environment Core Variables
+###########################################################
+
 variable "resource_group_name" {
-  type = string
+  description = "Name of the resource group for AKS deployment."
+  type        = string
 }
 
 variable "location" {
-  type = string
+  description = "Azure region for all resources."
+  type        = string
 }
 
 variable "name_prefix" {
-  type = string
+  description = "Prefix used for all resource names (e.g., dev, prod)."
+  type        = string
 }
 
+###########################################################
+# 🌐 Networking Configuration
+###########################################################
+
 variable "vnet_address_space" {
-  type = list(string)
+  description = "The address space of the Virtual Network."
+  type        = list(string)
 }
 
 variable "aks_subnet_prefixes" {
-  type = list(string)
+  description = "The subnet prefixes for AKS node pool."
+  type        = list(string)
 }
 
+###########################################################
+# ⚙️ AKS Cluster Configuration
+###########################################################
+
 variable "system_node_count" {
-  type = number
+  description = "Number of nodes in the system node pool."
+  type        = number
+  default     = 1
 }
 
 variable "system_vm_size" {
-  type = string
+  description = "VM size for AKS nodes."
+  type        = string
+  default     = "Standard_D2s_v3"
 }
 
+###########################################################
+# 📊 Monitoring & Logging
+###########################################################
+
 variable "enable_monitoring" {
-  type = bool
+  description = "Enable monitoring and Log Analytics integration."
+  type        = bool
+  default     = true
 }
 
 variable "log_analytics_workspace_id" {
-  type = string
+  description = "Log Analytics workspace resource ID."
+  type        = string
+  default     = ""
 }
 
+###########################################################
+# 🔐 Azure AD / RBAC Integration
+###########################################################
+
 variable "aks_admin_group_object_ids" {
-  type = list(string)
+  description = "List of Azure AD group object IDs with admin rights on AKS."
+  type        = list(string)
+  default     = []
+}
+
+###########################################################
+# 🧩 Feature Flags
+###########################################################
+
+variable "enable_oidc_issuer" {
+  description = "Enable OIDC issuer for AKS."
+  type        = bool
+  default     = true
+}
+
+variable "enable_workload_identity" {
+  description = "Enable workload identity federation for AKS."
+  type        = bool
+  default     = true
+}
+
+###########################################################
+# 🏷️ Tags
+###########################################################
+
+variable "tags" {
+  description = "Common tags to apply to all resources."
+  type        = map(string)
+  default = {
+    environment = "dev"
+    project     = "aks-devops-platform"
+    managed_by  = "Terraform"
+  }
 }
 
