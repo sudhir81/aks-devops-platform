@@ -67,7 +67,6 @@ Ensure the following tools are installed:
 # For macOS
 brew install terraform azure-cli kubectl helm
 
-
 Authenticate to Azure:
 
 az login
@@ -101,10 +100,10 @@ Azure Container Registry (ACR)
 
 ```
 🧱 Modules Overview
-Module	Description	Key Resources
+Module			Description	Key Resources
 network			Creates VNet and Subnet for AKS	azurerm_virtual_network, azurerm_subnet
 monitoring		Creates Log Analytics Workspace for monitoring	azurerm_log_analytics_workspace
-aks			Provisions AKS cluster with RBAC, monitoring, and AAD integration	azurerm_kubernetes_cluster
+aks				Provisions AKS cluster with RBAC, monitoring, and AAD integration	azurerm_kubernetes_cluster
 keyvault		(Planned) For secret management integration	azurerm_key_vault
 🐳 App Containerization (Optional)
 ```
