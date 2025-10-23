@@ -28,24 +28,47 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------
-      # Validate Secrets Exist
+      # Validate Secrets Exist (Safe Bash)
       # -----------------------------
       - name: 🧠 Validate Required Secrets
         run: |
           echo "🔍 Validating required secrets..."
-          REQUIRED=("AZURE_CLIENT_ID" "AZURE_TENANT_ID" "AZURE_SUBSCRIPTION_ID" "ACR_NAME" "AKS_CLUSTER_NAME" "AKS_RESOURCE_GROUP")
+          REQUIRED_SECRETS=(
+            "${{ secrets.AZURE_CLIENT_ID }}"
+            "${{ secrets.AZURE_TENANT_ID }}"
+            "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+            "${{ secrets.ACR_NAME }}"
+            "${{ secrets.AKS_CLUSTER_NAME }}"
+            "${{ secrets.AKS_RESOURCE_GROUP }}"
+          )
+
+          SECRET_NAMES=(
+            "AZURE_CLIENT_ID"
+            "AZURE_TENANT_ID"
+            "AZURE_SUBSCRIPTION_ID"
+            "ACR_NAME"
+            "AKS_CLUSTER_NAME"
+            "AKS_RESOURCE_GROUP"
+          )
+
           MISSING=false
-          for VAR in "${REQUIRED[@]}"; do
-            if [ -z "${{ secrets[$VAR] }}" ]; then
-              echo "❌ Missing secret: $VAR"
+          for i in "${!REQUIRED_SECRETS[@]}"; do
+            VALUE="${REQUIRED_SECRETS[$i]}"
+            NAME="${SECRET_NAMES[$i]}"
+            if [ -z "$VALUE" ]; then
+              echo "❌ Missing secret: $NAME"
               MISSING=true
+            else
+              echo "✅ $NAME found"
             fi
           done
+
           if [ "$MISSING" = true ]; then
             echo "❌ One or more required secrets are missing. Exiting..."
             exit 1
           fi
-          echo "✅ All required secrets are set."
+
+          echo "✅ All required secrets are present."
 
       # -----------------------------
       # Azure Login via OIDC
