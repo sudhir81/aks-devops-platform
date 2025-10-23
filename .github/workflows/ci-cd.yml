@@ -33,41 +33,27 @@ jobs:
       - name: 🧠 Validate Required Secrets
         run: |
           echo "🔍 Validating required secrets..."
-          REQUIRED_SECRETS=(
-            "${{ secrets.AZURE_CLIENT_ID }}"
-            "${{ secrets.AZURE_TENANT_ID }}"
-            "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-            "${{ secrets.ACR_NAME }}"
-            "${{ secrets.AKS_CLUSTER_NAME }}"
-            "${{ secrets.AKS_RESOURCE_GROUP }}"
-          )
-
-          SECRET_NAMES=(
-            "AZURE_CLIENT_ID"
-            "AZURE_TENANT_ID"
-            "AZURE_SUBSCRIPTION_ID"
-            "ACR_NAME"
-            "AKS_CLUSTER_NAME"
-            "AKS_RESOURCE_GROUP"
-          )
-
           MISSING=false
-          for i in "${!REQUIRED_SECRETS[@]}"; do
-            VALUE="${REQUIRED_SECRETS[$i]}"
-            NAME="${SECRET_NAMES[$i]}"
-            if [ -z "$VALUE" ]; then
-              echo "❌ Missing secret: $NAME"
+          check_secret() {
+            if [ -z "$1" ]; then
+              echo "❌ Missing secret: $2"
               MISSING=true
             else
-              echo "✅ $NAME found"
+              echo "✅ $2 found"
             fi
-          done
+          }
+
+          check_secret "${{ secrets.AZURE_CLIENT_ID }}" "AZURE_CLIENT_ID"
+          check_secret "${{ secrets.AZURE_TENANT_ID }}" "AZURE_TENANT_ID"
+          check_secret "${{ secrets.AZURE_SUBSCRIPTION_ID }}" "AZURE_SUBSCRIPTION_ID"
+          check_secret "${{ secrets.ACR_NAME }}" "ACR_NAME"
+          check_secret "${{ secrets.AKS_CLUSTER_NAME }}" "AKS_CLUSTER_NAME"
+          check_secret "${{ secrets.AKS_RESOURCE_GROUP }}" "AKS_RESOURCE_GROUP"
 
           if [ "$MISSING" = true ]; then
             echo "❌ One or more required secrets are missing. Exiting..."
             exit 1
           fi
-
           echo "✅ All required secrets are present."
 
       # -----------------------------
