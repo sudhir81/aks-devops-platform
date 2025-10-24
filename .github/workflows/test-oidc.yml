@@ -1,7 +1,7 @@
-# .github/workflows/test-oidc.yml
 name: Test OIDC Azure Login
 
-on: [workflow_dispatch]
+on:
+  workflow_dispatch:
 
 permissions:
   id-token: write
@@ -21,7 +21,6 @@ jobs:
           tenant-id: ${{ secrets.ARM_TENANT_ID }}
           subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
 
-      - name: Verify Azure Context
-        run: |
-          az account show
+      - name: Show Azure Context
+        run: az account show
 
