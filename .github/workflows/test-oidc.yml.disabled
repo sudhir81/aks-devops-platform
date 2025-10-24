@@ -1,0 +1,34 @@
+name: 🔐 Test OIDC Azure Login
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔐 Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
+
+      - name: 🧩 Verify Azure Context
+        run: |
+          echo "=== Azure Subscription Context ==="
+          az account show --output jsonc
+
+      - name: 👤 Verify Azure Identity
+        run: |
+          echo "🔍 Checking current signed-in identity..."
+          az ad signed-in-user show --query "{displayName:displayName, id:id, userPrincipalName:userPrincipalName}" -o jsonc || \
+          echo "⚠️ Service Principal detected (expected for OIDC)"
