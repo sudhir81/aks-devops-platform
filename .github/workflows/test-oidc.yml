@@ -23,4 +23,8 @@ jobs:
 
       - name: Show Azure Context
         run: az account show
+      - name: Verify OIDC Context
+        run: |
+          echo "🔍 Checking current Azure identity..."
+          az ad signed-in-user show || echo "⚠️ This identity is a Service Principal (expected for OIDC)"
 
