@@ -28,18 +28,31 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------
-      # Validate Secrets
+      # Validate Required Secrets (Simplified)
       # -----------------------------
       - name: 🧠 Validate Required Secrets
         run: |
           echo "🔍 Validating required secrets..."
-          for s in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID ACR_NAME AKS_CLUSTER_NAME AKS_RESOURCE_GROUP; do
-            if [ -z "${{ secrets[$s] }}" ]; then
+          missing=false
+          for s in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID ACR_NAME AKS_CLUSTER_NAME AKS_RESOURCE_GROUP; do
+            if [ -z "${!s}" ]; then
               echo "❌ Missing secret: $s"
-              exit 1
+              missing=true
+            else
+              echo "✅ $s found"
             fi
-            echo "✅ $s found"
           done
+          if [ "$missing" = true ]; then
+            echo "🚨 One or more required secrets are missing!"
+            exit 1
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
+          AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
 
       # -----------------------------
       # Azure Login (OIDC)
@@ -47,16 +60,16 @@ jobs:
       - name: 🔐 Azure Login via OIDC
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
 
       # -----------------------------
       # Ensure AKS Role Assignment
       # -----------------------------
       - name: 🔑 Ensure AKS Cluster Admin Role
         run: |
-          SP_ID=${{ secrets.AZURE_CLIENT_ID }}
+          SP_ID=${{ secrets.ARM_CLIENT_ID }}
           RG_NAME=${{ secrets.AKS_RESOURCE_GROUP }}
           AKS_NAME=${{ secrets.AKS_CLUSTER_NAME }}
           
@@ -90,51 +103,23 @@ jobs:
       # Terraform Init
       # -----------------------------
       - name: ⚙️ Terraform Init
-        run: |
-          for i in {1..3}; do
-            echo "🚀 Terraform init (attempt $i)..."
-            if terraform -chdir=${{ env.ENV_PATH }} init -input=false; then
-              echo "✅ Terraform init successful"
-              break
-            fi
-            echo "⚠️ Retry in 10s..."
-            sleep 10
-            if [ "$i" -eq 3 ]; then
-              echo "❌ Init failed after 3 attempts"
-              exit 1
-            fi
-          done
+        run: terraform -chdir=${{ env.ENV_PATH }} init -input=false
         env:
           ARM_USE_OIDC: true
-          ARM_SKIP_CLI_CREDENTIAL: true
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
 
       # -----------------------------
       # Terraform Plan
       # -----------------------------
       - name: 🧮 Terraform Plan
-        run: |
-          for i in {1..3}; do
-            echo "🧮 Terraform plan (attempt $i)..."
-            if terraform -chdir=${{ env.ENV_PATH }} plan -input=false -out=tfplan -var-file=dev.tfvars; then
-              echo "✅ Plan successful"
-              break
-            fi
-            echo "⚠️ Retry in 10s..."
-            sleep 10
-            if [ "$i" -eq 3 ]; then
-              echo "❌ Plan failed after 3 attempts"
-              exit 1
-            fi
-          done
+        run: terraform -chdir=${{ env.ENV_PATH }} plan -input=false -out=tfplan -var-file=dev.tfvars
         env:
           ARM_USE_OIDC: true
-          ARM_SKIP_CLI_CREDENTIAL: true
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
 
       # -----------------------------
       # Docker Build & Push
@@ -150,70 +135,35 @@ jobs:
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       # -----------------------------
-      # Connect to AKS (Fixed REST Fallback)
+      # Connect to AKS
       # -----------------------------
-      - name: 🎯 Get AKS Credentials (Fixed)
-        env:
-          AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
-          AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
-        run: |
-          echo "🔐 Connecting to AKS..."
-          echo "Using cluster: $AKS_CLUSTER_NAME"
-          echo "Using resource group: $AKS_RESOURCE_GROUP"
-
-          for attempt in 1 2 3; do
-            echo "⚙️ Attempt $attempt of 3..."
-            if az aks get-credentials --name "$AKS_CLUSTER_NAME" --resource-group "$AKS_RESOURCE_GROUP" --overwrite-existing --admin; then
-              echo "✅ Connected to AKS."
-              break
-            else
-              echo "❌ Failed to connect (attempt $attempt). Trying REST fallback..."
-              az rest --method get \
-                --uri "https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ secrets.AKS_RESOURCE_GROUP }}/providers/Microsoft.ContainerService/managedClusters/${{ secrets.AKS_CLUSTER_NAME }}?api-version=2025-04-01" \
-                --headers "Content-Type=application/json" \
-                --output none || echo "⚠️ REST fallback failed, retrying..."
-              if [ "$attempt" -lt 3 ]; then
-                echo "⏳ Waiting 15 seconds..."
-                sleep 15
-              else
-                echo "🚨 All 3 attempts failed."
-                exit 1
-              fi
-            fi
-          done
+      - name: 🎯 Get AKS Credentials
+        run: az aks get-credentials --name ${{ secrets.AKS_CLUSTER_NAME }} --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} --overwrite-existing --admin
 
       # -----------------------------
       # Verify AKS Context
       # -----------------------------
       - name: 🔍 Verify AKS Connection
         run: |
-          echo "🔹 Current context:"
-          kubectl config current-context || echo "⚠️ No context"
-          echo "🔹 Checking nodes:"
-          kubectl get nodes || echo "⚠️ AKS not reachable"
+          kubectl config current-context
+          kubectl get nodes
 
       # -----------------------------
       # Helm Deploy
       # -----------------------------
       - name: ⛵ Deploy via Helm
         run: |
-          echo "🚀 Deploying Helm release..."
-          helm upgrade --install $RELEASE_NAME $CHART_PATH \
-            --namespace $K8S_NAMESPACE \
+          helm upgrade --install ${{ env.RELEASE_NAME }} ${{ env.CHART_PATH }} \
+            --namespace ${{ env.K8S_NAMESPACE }} \
             --set image.repository=${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }} \
             --set image.tag=${{ github.sha }} \
             --wait
-          echo "✅ Helm deployment done."
 
       # -----------------------------
       # Post Deployment Check
       # -----------------------------
       - name: ✅ Verify Deployment Health
         run: |
-          echo "🔎 Checking rollout status..."
-          kubectl rollout status deployment/$RELEASE_NAME -n $K8S_NAMESPACE --timeout=120s || true
-          echo "🔹 Listing pods:"
-          kubectl get pods -n $K8S_NAMESPACE -o wide
-          echo "🔹 Listing services:"
-          kubectl get svc -n $K8S_NAMESPACE
-
+          kubectl rollout status deployment/${{ env.RELEASE_NAME }} -n ${{ env.K8S_NAMESPACE }} --timeout=120s || true
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -o wide
+          kubectl get svc -n ${{ env.K8S_NAMESPACE }}
